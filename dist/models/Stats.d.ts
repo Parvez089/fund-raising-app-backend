@@ -1,16 +1,23 @@
-import mongoose, { Document } from 'mongoose';
+/** @format */
+import mongoose, { Document } from "mongoose";
+export interface IMonthlyInflow {
+    month: string;
+    amount: number;
+}
 export interface IStats extends Document {
-    totalFundRaised: number;
+    totalFunds: number;
+    monthlyGrowth: number;
+    activeCampaigns: number;
+    totalDonors: number;
     targetGoal: number;
-    activeParticipants: number;
+    monthlyInflow: IMonthlyInflow[];
     lastUpdated: Date;
 }
-declare const _default: mongoose.Model<IStats, {}, {}, {}, mongoose.Document<unknown, {}, IStats, {}, mongoose.DefaultSchemaOptions> & IStats & Required<{
+export declare const Stats: mongoose.Model<IStats, {}, {}, {}, mongoose.Document<unknown, {}, IStats, {}, mongoose.DefaultSchemaOptions> & IStats & Required<{
     _id: mongoose.Types.ObjectId;
 }> & {
     __v: number;
 } & {
     id: string;
 }, any, IStats>;
-export default _default;
 //# sourceMappingURL=Stats.d.ts.map
