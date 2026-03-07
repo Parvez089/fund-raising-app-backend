@@ -3,19 +3,58 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-import statsRoutes from '../routes/statsRoutes.js';
+import cookieParser from "cookie-parser";
+import bcrypt from "bcrypt";
+import { Admin } from "../models/Admin.js";
+import statsRoutes from "../routes/statsRoutes.js";
+import authRoutes from "../routes/authRoutes.js";
+import adminRoutes from "../routes/adminRoutes.js";
 dotenv.config();
 const app = express();
-// Middleware
-app.use(cors());
-app.use(express.json());
-// MongoDB Connection
-mongoose
-    .connect(process.env.MONGODB_URI)
-    .then(() => console.log("Connected to MongoDB for FundRaise BD"))
-    .catch((err) => console.error(err));
-// Sample Route for Dashboard Stats (Image 2)
-app.use('/api/stats', statsRoutes);
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Middleware
+app.use(cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+}));
+app.use(express.json());
+app.use(cookieParser());
+// seeding function
+const seedSuperAdmin = async () => {
+    try {
+        const adminExists = await Admin.findOne({ role: "super_admin" });
+        if (!adminExists) {
+            const password = process.env.ADMIN_PASSWORD || "Admin@123";
+            const email = process.env.ADMIN_EMAIL || "admin@fundraisebd.org";
+            const hashedPassword = await bcrypt.hash(password, 10);
+            const newAdmin = new Admin({
+                email: email,
+                password: hashedPassword,
+                role: "super_admin",
+            });
+            await newAdmin.save();
+            console.log("--- Super Admin seeded successfully ---");
+        }
+    }
+    catch (error) {
+        console.error("Seeding failed:", error);
+    }
+};
+mongoose
+    .connect(process.env.MongoDB_URI || "...")
+    .then(async () => {
+    console.log("MongoDB Connected");
+    console.log("Connected to:", mongoose.connection.name);
+    await seedSuperAdmin();
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+})
+    .catch((err) => console.error("Database connection error:", err));
+// Routes
+app.use("/api/stats", statsRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
 //# sourceMappingURL=server.js.map
