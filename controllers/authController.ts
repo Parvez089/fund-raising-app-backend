@@ -32,13 +32,13 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const token = jwt.sign(
       { id: admin._id, role: admin.role },
       process.env.JWT_SECRET || "fallback_secret",
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: true,
+      sameSite: "none",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
     });
@@ -59,8 +59,8 @@ export const logout = async (_req: Request, res: Response): Promise<void> => {
   try {
     res.clearCookie("token", {
       httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: true,
+      sameSite: "none",
       path: "/",
     });
     res.status(200).json({ message: "Logged out successfully." });
@@ -81,7 +81,7 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
 
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET || "fallback_secret"
+      process.env.JWT_SECRET || "fallback_secret",
     ) as { id: string; role: string };
 
     const admin = await Admin.findById(decoded.id).select("-password");
