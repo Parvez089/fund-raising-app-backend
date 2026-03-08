@@ -11,6 +11,8 @@ import statsRoutes from "../routes/statsRoutes.js";
 import authRoutes from "../routes/authRoutes.js";
 import adminRoutes from "../routes/adminRoutes.js";
 import targetRoutes from "../routes/targetRoutes.js";
+import contributorRoutes from "../routes/ContributorRoutes.js";
+import progressRoutes from "../routes/progressRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -71,3 +73,5 @@ app.use("/api/stats", statsRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/target", targetRoutes);
+app.use("/api/contributors", contributorRoutes);
+app.use("/api/progress", progressRoutes);
