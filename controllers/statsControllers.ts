@@ -4,26 +4,37 @@ import type { Request, Response } from "express";
 import { Stats } from "../models/Stats.js";
 import { Fund } from "../models/Fund.js";
 
+// Helper: get or create stats document
+const getOrCreateStats = async () => {
+  let stats = await Stats.findOne();
+  if (!stats) {
+    stats = await Stats.create({
+      totalFunds: 0,
+      monthlyGrowth: 0,
+      activeCampaigns: 1,
+      totalDonors: 0,
+      targetGoal: 500000,
+      monthlyInflow: [],
+      lastUpdated: new Date(),
+    });
+  }
+  return stats;
+};
+
 // ─────────────────────────────────────────
 // GET /api/stats
-// All 4 dashboard cards + chart data
 // ─────────────────────────────────────────
 export const getStats = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const stats = await Stats.findOne();
-
-    if (!stats) {
-      res.status(404).json({ message: "Stats not found." });
-      return;
-    }
+    const stats = await getOrCreateStats();
 
     res.status(200).json({
-      totalFunds: stats.totalFunds, // Card 1
-      monthlyGrowth: stats.monthlyGrowth, // Card 2
-      activeCampaigns: stats.activeCampaigns, // Card 3
-      totalDonors: stats.totalDonors, // Card 4
-      targetGoal: stats.targetGoal, // Progress bar
-      monthlyInflow: stats.monthlyInflow, // Chart
+      totalFunds: stats.totalFunds,
+      monthlyGrowth: stats.monthlyGrowth,
+      activeCampaigns: stats.activeCampaigns,
+      totalDonors: stats.totalDonors,
+      targetGoal: stats.targetGoal,
+      monthlyInflow: stats.monthlyInflow,
       lastUpdated: stats.lastUpdated,
     });
   } catch (error) {
@@ -34,11 +45,6 @@ export const getStats = async (_req: Request, res: Response): Promise<void> => {
 
 // ─────────────────────────────────────────
 // POST /api/stats/fund
-// Add fund → auto updates:
-//   totalFunds (Card 1)
-//   totalDonors (Card 4)
-//   monthlyInflow (Chart)
-//   monthlyGrowth (Card 2) — auto calculated
 // ─────────────────────────────────────────
 export const addFund = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -63,14 +69,10 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
       note: note || "",
     });
 
-    // Update stats
-    const stats = await Stats.findOne();
-    if (!stats) {
-      res.status(404).json({ message: "Stats not initialized." });
-      return;
-    }
+    // Get or create stats
+    const stats = await getOrCreateStats();
 
-    // Update Card 1 & Card 4
+    // Update totals
     stats.totalFunds += Number(amount);
     stats.totalDonors += 1;
     stats.lastUpdated = new Date();
@@ -86,10 +88,7 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
     if (monthEntry) {
       monthEntry.amount += Number(amount);
     } else {
-      stats.monthlyInflow.push({
-        month: currentMonth,
-        amount: Number(amount),
-      });
+      stats.monthlyInflow.push({ month: currentMonth, amount: Number(amount) });
     }
 
     // Keep only last 6 months
@@ -97,13 +96,11 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
       stats.monthlyInflow = stats.monthlyInflow.slice(-6);
     }
 
-    // Auto-calculate Card 2: Monthly Growth %
+    // Auto-calculate monthly growth %
     const inflow = stats.monthlyInflow;
     if (inflow.length >= 2) {
       const prevEntry = inflow[inflow.length - 2];
       const currEntry = inflow[inflow.length - 1];
-
-      // ✅ TypeScript undefined check
       if (prevEntry && currEntry) {
         const prev = prevEntry.amount;
         const curr = currEntry.amount;
@@ -113,6 +110,7 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
             : 0;
       }
     }
+
     await stats.save();
 
     res.status(201).json({
@@ -133,7 +131,6 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
 
 // ─────────────────────────────────────────
 // PUT /api/stats/target
-// Update fundraising target goal
 // ─────────────────────────────────────────
 export const updateTarget = async (
   req: Request,
@@ -150,13 +147,8 @@ export const updateTarget = async (
     const stats = await Stats.findOneAndUpdate(
       {},
       { targetGoal: Number(targetGoal), lastUpdated: new Date() },
-      { new: true },
+      { new: true, upsert: true },
     );
-
-    if (!stats) {
-      res.status(404).json({ message: "Stats not found." });
-      return;
-    }
 
     res.status(200).json({
       message: "Target updated successfully!",
@@ -170,7 +162,6 @@ export const updateTarget = async (
 
 // ─────────────────────────────────────────
 // PUT /api/stats/campaigns
-// Manually update Card 3: Active Campaigns
 // ─────────────────────────────────────────
 export const updateCampaigns = async (
   req: Request,
@@ -186,17 +177,9 @@ export const updateCampaigns = async (
 
     const stats = await Stats.findOneAndUpdate(
       {},
-      {
-        activeCampaigns: Number(activeCampaigns),
-        lastUpdated: new Date(),
-      },
-      { new: true },
+      { activeCampaigns: Number(activeCampaigns), lastUpdated: new Date() },
+      { new: true, upsert: true },
     );
-
-    if (!stats) {
-      res.status(404).json({ message: "Stats not found." });
-      return;
-    }
 
     res.status(200).json({
       message: "Active campaigns updated!",
@@ -210,7 +193,6 @@ export const updateCampaigns = async (
 
 // ─────────────────────────────────────────
 // GET /api/stats/transactions
-// Paginated transaction history
 // ─────────────────────────────────────────
 export const getTransactions = async (
   req: Request,
