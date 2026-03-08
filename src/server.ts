@@ -10,6 +10,7 @@ import { Admin } from "../models/Admin.js";
 import statsRoutes from "../routes/statsRoutes.js";
 import authRoutes from "../routes/authRoutes.js";
 import adminRoutes from "../routes/adminRoutes.js";
+import targetRoutes from "../routes/targetRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -69,3 +70,4 @@ mongoose
 app.use("/api/stats", statsRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/target", targetRoutes);
