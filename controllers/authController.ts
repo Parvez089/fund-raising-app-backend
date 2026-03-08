@@ -47,6 +47,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       message: "Login successful",
       role: admin.role,
       email: admin.email,
+      token: token,
     });
   } catch (error) {
     console.error("Login error:", error);
