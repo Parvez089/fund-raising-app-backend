@@ -21,11 +21,24 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "https://fund-raising-hatbair.vercel.app",
-      "https://fund-raising-lilac.vercel.app",
-    ],
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        "http://localhost:3000",
+        "https://fund-raising-hatbair.vercel.app",
+        "https://fund-raising-lilac.vercel.app",
+      ];
+
+      // Allow all vercel preview deployments
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        origin.match(/https:\/\/fund-raising-.*\.vercel\.app/)
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
