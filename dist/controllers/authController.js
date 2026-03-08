@@ -23,8 +23,8 @@ export const login = async (req, res) => {
         const token = jwt.sign({ id: admin._id, role: admin.role }, process.env.JWT_SECRET || "fallback_secret", { expiresIn: "7d" });
         res.cookie("token", token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
+            secure: true,
+            sameSite: "none",
             maxAge: 7 * 24 * 60 * 60 * 1000,
             path: "/",
         });
@@ -32,6 +32,7 @@ export const login = async (req, res) => {
             message: "Login successful",
             role: admin.role,
             email: admin.email,
+            token: token,
         });
     }
     catch (error) {
@@ -44,8 +45,8 @@ export const logout = async (_req, res) => {
     try {
         res.clearCookie("token", {
             httpOnly: true,
-            sameSite: "lax",
-            secure: process.env.NODE_ENV === "production",
+            secure: true,
+            sameSite: "none",
             path: "/",
         });
         res.status(200).json({ message: "Logged out successfully." });

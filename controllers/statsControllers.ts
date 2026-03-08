@@ -82,11 +82,17 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
       .toLocaleString("default", { month: "short" })
       .toUpperCase();
 
-    const monthEntry = stats.monthlyInflow.find(
-      (m) => m.month === currentMonth,
+    const existingIndex = stats.monthlyInflow.findIndex(
+      (m) => m.month === currentMonth
     );
-    if (monthEntry) {
-      monthEntry.amount += Number(amount);
+
+    if (existingIndex >= 0) {
+      // ✅ Replace the entry so Mongoose detects the change
+      const existingAmount = stats.monthlyInflow[existingIndex]?.amount ?? 0;
+      stats.monthlyInflow[existingIndex] = {
+        month: currentMonth,
+        amount: existingAmount + Number(amount),
+      };
     } else {
       stats.monthlyInflow.push({ month: currentMonth, amount: Number(amount) });
     }
@@ -95,6 +101,9 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
     if (stats.monthlyInflow.length > 6) {
       stats.monthlyInflow = stats.monthlyInflow.slice(-6);
     }
+
+    // ✅ CRITICAL: tell Mongoose the nested array was mutated
+    stats.markModified("monthlyInflow");
 
     // Auto-calculate monthly growth %
     const inflow = stats.monthlyInflow;
@@ -106,7 +115,7 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
         const curr = currEntry.amount;
         stats.monthlyGrowth =
           prev > 0
-            ? Number(Number(((curr - prev) / prev) * 100).toFixed(1))
+            ? Number(((curr - prev) / prev * 100).toFixed(1))
             : 0;
       }
     }
@@ -134,7 +143,7 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
 // ─────────────────────────────────────────
 export const updateTarget = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   try {
     const { targetGoal } = req.body;
@@ -147,7 +156,7 @@ export const updateTarget = async (
     const stats = await Stats.findOneAndUpdate(
       {},
       { targetGoal: Number(targetGoal), lastUpdated: new Date() },
-      { new: true, upsert: true },
+      { new: true, upsert: true }
     );
 
     res.status(200).json({
@@ -165,7 +174,7 @@ export const updateTarget = async (
 // ─────────────────────────────────────────
 export const updateCampaigns = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   try {
     const { activeCampaigns } = req.body;
@@ -178,7 +187,7 @@ export const updateCampaigns = async (
     const stats = await Stats.findOneAndUpdate(
       {},
       { activeCampaigns: Number(activeCampaigns), lastUpdated: new Date() },
-      { new: true, upsert: true },
+      { new: true, upsert: true }
     );
 
     res.status(200).json({
@@ -196,7 +205,7 @@ export const updateCampaigns = async (
 // ─────────────────────────────────────────
 export const getTransactions = async (
   req: Request,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   try {
     const page = Number(req.query.page) || 1;
