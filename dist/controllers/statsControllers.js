@@ -70,9 +70,14 @@ export const addFund = async (req, res) => {
         const currentMonth = new Date()
             .toLocaleString("default", { month: "short" })
             .toUpperCase();
-        const monthEntry = stats.monthlyInflow.find((m) => m.month === currentMonth);
-        if (monthEntry) {
-            monthEntry.amount += Number(amount);
+        const existingIndex = stats.monthlyInflow.findIndex((m) => m.month === currentMonth);
+        if (existingIndex >= 0) {
+            // ✅ Replace the entry so Mongoose detects the change
+            const existingAmount = stats.monthlyInflow[existingIndex]?.amount ?? 0;
+            stats.monthlyInflow[existingIndex] = {
+                month: currentMonth,
+                amount: existingAmount + Number(amount),
+            };
         }
         else {
             stats.monthlyInflow.push({ month: currentMonth, amount: Number(amount) });
@@ -81,6 +86,8 @@ export const addFund = async (req, res) => {
         if (stats.monthlyInflow.length > 6) {
             stats.monthlyInflow = stats.monthlyInflow.slice(-6);
         }
+        // ✅ CRITICAL: tell Mongoose the nested array was mutated
+        stats.markModified("monthlyInflow");
         // Auto-calculate monthly growth %
         const inflow = stats.monthlyInflow;
         if (inflow.length >= 2) {
@@ -91,7 +98,7 @@ export const addFund = async (req, res) => {
                 const curr = currEntry.amount;
                 stats.monthlyGrowth =
                     prev > 0
-                        ? Number(Number(((curr - prev) / prev) * 100).toFixed(1))
+                        ? Number(((curr - prev) / prev * 100).toFixed(1))
                         : 0;
             }
         }
