@@ -23,11 +23,21 @@ const getOrCreateStats = async () => {
 export const getStats = async (_req, res) => {
     try {
         const stats = await getOrCreateStats();
+        // ✅ Always compute live from Fund collection — never trust stored counters
+        const [aggregateResult, totalDonors] = await Promise.all([
+            Fund.aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }]),
+            Fund.countDocuments(),
+        ]);
+        const totalFunds = aggregateResult[0]?.total ?? 0;
+        // ✅ Sync stored values so future addFund increments from correct base
+        stats.totalFunds = totalFunds;
+        stats.totalDonors = totalDonors;
+        await stats.save();
         res.status(200).json({
-            totalFunds: stats.totalFunds,
+            totalFunds,
             monthlyGrowth: stats.monthlyGrowth,
             activeCampaigns: stats.activeCampaigns,
-            totalDonors: stats.totalDonors,
+            totalDonors,
             targetGoal: stats.targetGoal,
             monthlyInflow: stats.monthlyInflow,
             lastUpdated: stats.lastUpdated,
