@@ -21,6 +21,24 @@ const getOrCreateStats = async () => {
   return stats;
 };
 
+// ✅ Consistent month label: "Mar 2026" format
+function currentMonthLabel(): string {
+  return new Date().toLocaleString("en-US", { month: "short", year: "numeric" });
+}
+
+// ✅ Always return 6 months with 0 fill for missing months
+function ensure6Months(
+  inflow: { month: string; amount: number }[]
+): { month: string; amount: number }[] {
+  const now = new Date();
+  return Array.from({ length: 6 }, (_, i) => {
+    const d     = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+    const label = d.toLocaleString("en-US", { month: "short", year: "numeric" });
+    const real  = inflow.find((m) => m.month === label);
+    return { month: label, amount: real?.amount ?? 0 };
+  });
+}
+
 // ─────────────────────────────────────────
 // GET /api/stats
 // ─────────────────────────────────────────
@@ -28,33 +46,32 @@ export const getStats = async (_req: Request, res: Response): Promise<void> => {
   try {
     const stats = await getOrCreateStats();
 
-    // ✅ Always compute live from Fund collection — never trust stored counters
+    // Always compute live from Fund collection
     const [aggregateResult, totalDonors] = await Promise.all([
       Fund.aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }]),
       Fund.countDocuments(),
     ]);
     const totalFunds = aggregateResult[0]?.total ?? 0;
 
-    // ✅ Sync stored values so future addFund increments from correct base
-    stats.totalFunds = totalFunds;
+    // Sync stored values
+    stats.totalFunds  = totalFunds;
     stats.totalDonors = totalDonors;
     await stats.save();
 
     res.status(200).json({
       totalFunds,
-      monthlyGrowth: stats.monthlyGrowth,
+      monthlyGrowth:   stats.monthlyGrowth,
       activeCampaigns: stats.activeCampaigns,
       totalDonors,
-      targetGoal: stats.targetGoal,
-      monthlyInflow: stats.monthlyInflow,
-      lastUpdated: stats.lastUpdated,
+      targetGoal:      stats.targetGoal,
+      monthlyInflow:   ensure6Months(stats.monthlyInflow ?? []), // ✅ always 6
+      lastUpdated:     stats.lastUpdated,
     });
   } catch (error) {
     console.error("getStats error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 // ─────────────────────────────────────────
 // POST /api/stats/fund
@@ -67,7 +84,6 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ message: "Please provide a valid amount." });
       return;
     }
-
     if (!campaign) {
       res.status(400).json({ message: "Campaign name is required." });
       return;
@@ -75,39 +91,35 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
 
     // Save transaction
     const fund = await Fund.create({
-      amount: Number(amount),
+      amount:      Number(amount),
       campaign,
-      donorName: donorName || "Anonymous",
-      donorEmail: donorEmail || "",
-      note: note || "",
+      donorName:   donorName  || "Anonymous",
+      donorEmail:  donorEmail || "",
+      note:        note       || "",
     });
 
-    // Get or create stats
     const stats = await getOrCreateStats();
 
     // Update totals
-    stats.totalFunds += Number(amount);
+    stats.totalFunds  += Number(amount);
     stats.totalDonors += 1;
-    stats.lastUpdated = new Date();
+    stats.lastUpdated  = new Date();
 
-    // Update chart — current month
-    const currentMonth = new Date()
-      .toLocaleString("default", { month: "short" })
-      .toUpperCase();
+    // ✅ FIX: use consistent "Mar 2026" format (was "MAR" before)
+    const monthLabel = currentMonthLabel();
 
     const existingIndex = stats.monthlyInflow.findIndex(
-      (m) => m.month === currentMonth
+      (m) => m.month === monthLabel
     );
 
     if (existingIndex >= 0) {
-      // ✅ Replace the entry so Mongoose detects the change
       const existingAmount = stats.monthlyInflow[existingIndex]?.amount ?? 0;
       stats.monthlyInflow[existingIndex] = {
-        month: currentMonth,
+        month:  monthLabel,
         amount: existingAmount + Number(amount),
       };
     } else {
-      stats.monthlyInflow.push({ month: currentMonth, amount: Number(amount) });
+      stats.monthlyInflow.push({ month: monthLabel, amount: Number(amount) });
     }
 
     // Keep only last 6 months
@@ -115,7 +127,6 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
       stats.monthlyInflow = stats.monthlyInflow.slice(-6);
     }
 
-    // ✅ CRITICAL: tell Mongoose the nested array was mutated
     stats.markModified("monthlyInflow");
 
     // Auto-calculate monthly growth %
@@ -127,9 +138,7 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
         const prev = prevEntry.amount;
         const curr = currEntry.amount;
         stats.monthlyGrowth =
-          prev > 0
-            ? Number(((curr - prev) / prev * 100).toFixed(1))
-            : 0;
+          prev > 0 ? Number(((curr - prev) / prev * 100).toFixed(1)) : 0;
       }
     }
 
@@ -139,10 +148,10 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
       message: "Fund added successfully!",
       fund,
       updatedStats: {
-        totalFunds: stats.totalFunds,
+        totalFunds:    stats.totalFunds,
         monthlyGrowth: stats.monthlyGrowth,
-        totalDonors: stats.totalDonors,
-        monthlyInflow: stats.monthlyInflow,
+        totalDonors:   stats.totalDonors,
+        monthlyInflow: ensure6Months(stats.monthlyInflow),
       },
     });
   } catch (error) {
@@ -154,10 +163,7 @@ export const addFund = async (req: Request, res: Response): Promise<void> => {
 // ─────────────────────────────────────────
 // PUT /api/stats/target
 // ─────────────────────────────────────────
-export const updateTarget = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const updateTarget = async (req: Request, res: Response): Promise<void> => {
   try {
     const { targetGoal } = req.body;
 
@@ -173,7 +179,7 @@ export const updateTarget = async (
     );
 
     res.status(200).json({
-      message: "Target updated successfully!",
+      message:    "Target updated successfully!",
       targetGoal: stats.targetGoal,
     });
   } catch (error) {
@@ -185,10 +191,7 @@ export const updateTarget = async (
 // ─────────────────────────────────────────
 // PUT /api/stats/campaigns
 // ─────────────────────────────────────────
-export const updateCampaigns = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const updateCampaigns = async (req: Request, res: Response): Promise<void> => {
   try {
     const { activeCampaigns } = req.body;
 
@@ -204,7 +207,7 @@ export const updateCampaigns = async (
     );
 
     res.status(200).json({
-      message: "Active campaigns updated!",
+      message:         "Active campaigns updated!",
       activeCampaigns: stats.activeCampaigns,
     });
   } catch (error) {
@@ -216,14 +219,11 @@ export const updateCampaigns = async (
 // ─────────────────────────────────────────
 // GET /api/stats/transactions
 // ─────────────────────────────────────────
-export const getTransactions = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+export const getTransactions = async (req: Request, res: Response): Promise<void> => {
   try {
-    const page = Number(req.query.page) || 1;
+    const page  = Number(req.query.page)  || 1;
     const limit = Number(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const skip  = (page - 1) * limit;
 
     const [transactions, total] = await Promise.all([
       Fund.find().sort({ createdAt: -1 }).skip(skip).limit(limit),

@@ -17,19 +17,33 @@ const getOrCreateStats = async () => {
     }
     return stats;
 };
+// ✅ Consistent month label: "Mar 2026" format
+function currentMonthLabel() {
+    return new Date().toLocaleString("en-US", { month: "short", year: "numeric" });
+}
+// ✅ Always return 6 months with 0 fill for missing months
+function ensure6Months(inflow) {
+    const now = new Date();
+    return Array.from({ length: 6 }, (_, i) => {
+        const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+        const label = d.toLocaleString("en-US", { month: "short", year: "numeric" });
+        const real = inflow.find((m) => m.month === label);
+        return { month: label, amount: real?.amount ?? 0 };
+    });
+}
 // ─────────────────────────────────────────
 // GET /api/stats
 // ─────────────────────────────────────────
 export const getStats = async (_req, res) => {
     try {
         const stats = await getOrCreateStats();
-        // ✅ Always compute live from Fund collection — never trust stored counters
+        // Always compute live from Fund collection
         const [aggregateResult, totalDonors] = await Promise.all([
             Fund.aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }]),
             Fund.countDocuments(),
         ]);
         const totalFunds = aggregateResult[0]?.total ?? 0;
-        // ✅ Sync stored values so future addFund increments from correct base
+        // Sync stored values
         stats.totalFunds = totalFunds;
         stats.totalDonors = totalDonors;
         await stats.save();
@@ -39,7 +53,7 @@ export const getStats = async (_req, res) => {
             activeCampaigns: stats.activeCampaigns,
             totalDonors,
             targetGoal: stats.targetGoal,
-            monthlyInflow: stats.monthlyInflow,
+            monthlyInflow: ensure6Months(stats.monthlyInflow ?? []), // ✅ always 6
             lastUpdated: stats.lastUpdated,
         });
     }
@@ -70,33 +84,28 @@ export const addFund = async (req, res) => {
             donorEmail: donorEmail || "",
             note: note || "",
         });
-        // Get or create stats
         const stats = await getOrCreateStats();
         // Update totals
         stats.totalFunds += Number(amount);
         stats.totalDonors += 1;
         stats.lastUpdated = new Date();
-        // Update chart — current month
-        const currentMonth = new Date()
-            .toLocaleString("default", { month: "short" })
-            .toUpperCase();
-        const existingIndex = stats.monthlyInflow.findIndex((m) => m.month === currentMonth);
+        // ✅ FIX: use consistent "Mar 2026" format (was "MAR" before)
+        const monthLabel = currentMonthLabel();
+        const existingIndex = stats.monthlyInflow.findIndex((m) => m.month === monthLabel);
         if (existingIndex >= 0) {
-            // ✅ Replace the entry so Mongoose detects the change
             const existingAmount = stats.monthlyInflow[existingIndex]?.amount ?? 0;
             stats.monthlyInflow[existingIndex] = {
-                month: currentMonth,
+                month: monthLabel,
                 amount: existingAmount + Number(amount),
             };
         }
         else {
-            stats.monthlyInflow.push({ month: currentMonth, amount: Number(amount) });
+            stats.monthlyInflow.push({ month: monthLabel, amount: Number(amount) });
         }
         // Keep only last 6 months
         if (stats.monthlyInflow.length > 6) {
             stats.monthlyInflow = stats.monthlyInflow.slice(-6);
         }
-        // ✅ CRITICAL: tell Mongoose the nested array was mutated
         stats.markModified("monthlyInflow");
         // Auto-calculate monthly growth %
         const inflow = stats.monthlyInflow;
@@ -107,9 +116,7 @@ export const addFund = async (req, res) => {
                 const prev = prevEntry.amount;
                 const curr = currEntry.amount;
                 stats.monthlyGrowth =
-                    prev > 0
-                        ? Number(((curr - prev) / prev * 100).toFixed(1))
-                        : 0;
+                    prev > 0 ? Number(((curr - prev) / prev * 100).toFixed(1)) : 0;
             }
         }
         await stats.save();
@@ -120,7 +127,7 @@ export const addFund = async (req, res) => {
                 totalFunds: stats.totalFunds,
                 monthlyGrowth: stats.monthlyGrowth,
                 totalDonors: stats.totalDonors,
-                monthlyInflow: stats.monthlyInflow,
+                monthlyInflow: ensure6Months(stats.monthlyInflow),
             },
         });
     }
