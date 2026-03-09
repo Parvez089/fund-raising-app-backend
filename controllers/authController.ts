@@ -5,6 +5,23 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { Admin } from "../models/Admin.js";
 
+// ✅ Cookie options — dynamic based on whether connection is HTTPS
+// Mobile Chrome blocks sameSite:"none" on HTTP (requires Secure + HTTPS)
+function cookieOptions(req: Request) {
+  const isHttps =
+    req.secure ||
+    req.headers["x-forwarded-proto"] === "https" ||
+    process.env.NODE_ENV === "production";
+
+  return {
+    httpOnly: true,
+    secure:   isHttps,
+    sameSite: (isHttps ? "none" : "lax") as "none" | "lax",
+    maxAge:   7 * 24 * 60 * 60 * 1000, // 7 days
+    path:     "/",
+  };
+}
+
 // POST /api/auth/login
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -32,22 +49,15 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const token = jwt.sign(
       { id: admin._id, role: admin.role },
       process.env.JWT_SECRET || "fallback_secret",
-      { expiresIn: "7d" },
+      { expiresIn: "7d" }
     );
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: "/",
-    });
+    res.cookie("token", token, cookieOptions(req));
 
     res.status(200).json({
       message: "Login successful",
-      role: admin.role,
-      email: admin.email,
-      token: token,
+      role:    admin.role,
+      email:   admin.email,
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -56,13 +66,15 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 };
 
 // POST /api/auth/logout
-export const logout = async (_req: Request, res: Response): Promise<void> => {
+export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
+    // ✅ Must use same options as set — especially sameSite/secure must match
+    const opts = cookieOptions(req);
     res.clearCookie("token", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/",
+      httpOnly: opts.httpOnly,
+      secure:   opts.secure,
+      sameSite: opts.sameSite,
+      path:     opts.path,
     });
     res.status(200).json({ message: "Logged out successfully." });
   } catch (error) {
@@ -82,7 +94,7 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
 
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET || "fallback_secret",
+      process.env.JWT_SECRET || "fallback_secret"
     ) as { id: string; role: string };
 
     const admin = await Admin.findById(decoded.id).select("-password");
