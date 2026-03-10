@@ -13,6 +13,7 @@ import targetRoutes from "../routes/targetRoutes.js";
 import contributorRoutes from "../routes/ContributorRoutes.js";
 import progressRoutes from "../routes/progressRoutes.js";
 import participantRoutes from "../routes/participantRoutes.js";
+import contributionsRoutes from "../routes/contributionsRoutes.js";
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -80,4 +81,5 @@ app.use("/api/target", targetRoutes);
 app.use("/api/contributors", contributorRoutes);
 app.use("/api/progress", progressRoutes);
 app.use("/api/participants", participantRoutes);
+app.use("/api/contributions", contributionsRoutes);
 //# sourceMappingURL=server.js.map
