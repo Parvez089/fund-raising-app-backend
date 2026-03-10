@@ -46,25 +46,64 @@ export const getStats = async (_req: Request, res: Response): Promise<void> => {
   try {
     const stats = await getOrCreateStats();
 
-    // Always compute live from Fund collection
+    // ✅ Compute totals live from Fund collection (always accurate)
     const [aggregateResult, totalDonors] = await Promise.all([
       Fund.aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }]),
       Fund.countDocuments(),
     ]);
     const totalFunds = aggregateResult[0]?.total ?? 0;
 
+    // ✅ Compute monthlyInflow LIVE from Fund collection using "Mar 2026" format.
+    // This fixes stale/wrong-format data that was stored before the format fix.
+    const now = new Date();
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
+    const rawInflow: { _id: string; amount: number }[] = await Fund.aggregate([
+      { $match: { createdAt: { $gte: sixMonthsAgo } } },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m", date: "$createdAt" },
+          },
+          amount: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    // Convert "2026-03" → "Mar 2026" and build 6-month skeleton
+    const liveInflow = ensure6Months(
+      rawInflow.map(({ _id, amount }) => {
+        const [year, month] = _id.split("-");
+        const d = new Date(Number(year), Number(month) - 1, 1);
+        return {
+          month:  d.toLocaleString("en-US", { month: "short", year: "numeric" }),
+          amount,
+        };
+      })
+    );
+
+    // Calculate monthly growth from live data
+    const prev = liveInflow[liveInflow.length - 2]?.amount ?? 0;
+    const curr = liveInflow[liveInflow.length - 1]?.amount ?? 0;
+    const monthlyGrowth = prev > 0
+      ? Number(((curr - prev) / prev * 100).toFixed(1))
+      : 0;
+
     // Sync stored values
-    stats.totalFunds  = totalFunds;
-    stats.totalDonors = totalDonors;
+    stats.totalFunds    = totalFunds;
+    stats.totalDonors   = totalDonors;
+    stats.monthlyGrowth = monthlyGrowth;
+    stats.monthlyInflow = liveInflow;
+    stats.lastUpdated   = new Date();
     await stats.save();
 
     res.status(200).json({
       totalFunds,
-      monthlyGrowth:   stats.monthlyGrowth,
+      monthlyGrowth,
       activeCampaigns: stats.activeCampaigns,
       totalDonors,
       targetGoal:      stats.targetGoal,
-      monthlyInflow:   ensure6Months(stats.monthlyInflow ?? []), // ✅ always 6
+      monthlyInflow:   liveInflow, // ✅ always 6 months, always correct format
       lastUpdated:     stats.lastUpdated,
     });
   } catch (error) {

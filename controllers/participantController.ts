@@ -11,7 +11,11 @@ import { Fund } from "../models/Fund.js";
 // amount 50000 – 99999    → GOLD DONOR
 // amount >= 100000        → PLATINUM DONOR
 // ─────────────────────────────────────────────────────
-function getBadge(amount: number): string {
+function getBadge(amount: number, status?: string): string {
+  // ✅ Status-based badges override amount-based badges
+  if (status === "pending") return "PENDING PAYMENT";
+  if (status === "flagged") return "FLAGGED";
+
   if (amount >= 100000) return "PLATINUM DONOR";
   if (amount >= 50000)  return "GOLD DONOR";
   if (amount >= 10000)  return "TOP CONTRIBUTOR";
@@ -56,7 +60,8 @@ export const getParticipants = async (
 
     const participants = funds.map((f) => {
       const amount = f.amount ?? 0;
-      const badge  = getBadge(amount);
+      const status = (f as unknown as { status?: string }).status || "success";
+      const badge  = getBadge(amount, status);
       const name   = f.donorName?.trim() || "Anonymous";
 
       const initials = name
@@ -71,10 +76,11 @@ export const getParticipants = async (
         amount,
         campaign:    f.campaign  || "",
         note:        f.note      || "",
+        status,
         badge,
         initials,
         isAnonymous: !f.donorName || f.donorName.trim() === "Anonymous",
-        isTop:       amount >= 10000,
+        isTop:       amount >= 10000 && status === "success",
         joinedAt:    f.createdAt,
       };
     });
